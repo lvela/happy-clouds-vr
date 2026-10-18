@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Happy Clouds VR</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud" class="hidden">
+    <div class="pill"><span class="ico">🍡</span><span id="hud-mallows">0</span></div>
+    <div class="pill"><span class="ico">😊</span><span id="hud-happy">0</span></div>
+    <div class="pill wide"><span id="hud-goal">Next portal</span><div class="bar"><div id="hud-bar"></div></div></div>
+    <div class="pill" id="hud-extra-wrap"><span id="hud-extra"></span></div>
+  </div>
+  <div id="crosshair" class="hidden"></div>
+  <div id="prompt" class="hidden"></div>
+  <div id="toasts"></div>
+  <div id="fade"></div>
+
+  <div id="start">
+    <div class="card">
+      <h1>Happy Clouds</h1>
+      <p class="sub">A sunset world above the clouds</p>
+      <p>Collect floating marshmallows, then drop them in the giant cocoa mug to turn them into happiness.
+         Once you have enough happiness, the portals open.</p>
+      <ul class="worlds">
+        <li><b>🧱 Happy Land</b> build with bricks alongside the Master Builders</li>
+        <li><b>🛹 Outdoor Play Park</b> bikes, hoverboards, skateboards, skates and sports</li>
+        <li><b>🏖️ Sunny Beach</b> sandcastles, beach balls, shells and treasure</li>
+        <li><b>⛄ Snow Day Wonderland</b> sledding, snowmen, snowball fights and ice skating</li>
+      </ul>
+      <div id="loading">Loading the sky…</div>
+      <div class="buttons">
+        <button id="btn-desktop" disabled>Play on screen</button>
+        <span id="vr-slot"></span>
+      </div>
+      <details>
+        <summary>Controls</summary>
+        <div class="controls">
+          <div><h3>VR</h3>
+            Left stick: move · Right stick: turn<br>
+            Trigger: collect, use, place, throw<br>
+            Grip: grab / hold · A: jump<br>
+            B: remove brick / get off a ride · X: change color</div>
+          <div><h3>Keyboard &amp; mouse</h3>
+            WASD: move · Mouse: look · Space: jump · Shift: run<br>
+            Left click: collect, use, place, throw<br>
+            E: grab · Right click / F: remove / get off<br>
+            R: change color · Esc: release mouse</div>
+        </div>
+      </details>
+      <button id="btn-reset" class="link">Reset progress</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
