@@ -46,6 +46,7 @@ export function makeLabel(lines, { size = 1, color = '#3b2340', bg = 'rgba(255,2
   sprite.userData.draw(lines);
   sprite.scale.set(size, size * c.height / c.width, 1);
   sprite.renderOrder = 5;
+  sprite.raycast = () => {}; // labels never block pointing
   return sprite;
 }
 

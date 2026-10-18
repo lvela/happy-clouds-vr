@@ -410,6 +410,7 @@ class Game {
       p.ray.setFromCamera(new THREE.Vector2(0, 0), this.camera);
     } else {
       const m = p.ctrl.matrixWorld;
+      p.ray.camera = this.camera; // three.js needs a camera to test sprites; controller rays don't set one
       p.ray.ray.origin.setFromMatrixPosition(m);
       p.ray.ray.direction.set(0, 0, -1).transformDirection(m);
     }
@@ -897,6 +898,18 @@ class Game {
   }
 
   frame() {
+    // three.js stops the animation loop after any uncaught error, which in VR freezes the headset on
+    // the last frame. Catch everything so one bad frame can never lock the game up.
+    try {
+      this.step();
+    } catch (e) {
+      if (!this._frameErrors) console.error(e);
+      this._frameErrors = (this._frameErrors || 0) + 1;
+    }
+    try { this.renderer.render(this.scene, this.camera); } catch (e) { console.error(e); }
+  }
+
+  step() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.time = (this.time || 0) + dt;
     const stick = this.pollGamepads(dt);
@@ -923,7 +936,6 @@ class Game {
     this.fadeSphere.visible = fm.opacity > 0.01;
     this.updateShadowCamera();
     if (this.isVR && this.vrToast.visible) this.placeToast(false, dt);
-    this.renderer.render(this.scene, this.camera);
   }
 }
 
