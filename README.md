@@ -49,7 +49,7 @@ Tip: point at a far-away marshmallow and pull the trigger to magnet it to you. I
 
 All 3D models, sky HDRIs and ground textures are **CC0 / public domain** from [Poly Haven](https://polyhaven.com);
 see [`assets/CREDITS.md`](assets/CREDITS.md). The water normal map is from the three.js examples (MIT).
-Characters, clouds, bricks, rides and toys are built in code; all sound and music are synthesized with WebAudio.
+Characters, clouds, palm trees, bricks, rides and toys are built in code (kept low-poly so it runs smoothly on standalone headsets); all sound and music are synthesized with WebAudio.
 [three.js](https://threejs.org) (MIT) is loaded from the jsDelivr CDN, so you need an internet connection the first time.
 
 ## Code map
