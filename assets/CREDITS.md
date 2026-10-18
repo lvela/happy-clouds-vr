@@ -11,7 +11,6 @@ All assets below are from [Poly Haven](https://polyhaven.com) and released under
 - Texture: [snow_02](https://polyhaven.com/a/snow_02)
 - Texture: [grass_path_2](https://polyhaven.com/a/grass_path_2)
 - Texture: [asphalt_02](https://polyhaven.com/a/asphalt_02)
-- Model: [island_tree_02](https://polyhaven.com/a/island_tree_02)
 - Model: [lifebuoy](https://polyhaven.com/a/lifebuoy)
 - Model: [rubber_duck_toy](https://polyhaven.com/a/rubber_duck_toy)
 - Model: [football](https://polyhaven.com/a/football)
