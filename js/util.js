@@ -222,3 +222,12 @@ export function makeTerrain(size, segments, heightFn, material, cx = 0, cz = 0) 
 
 // Confetti burst helper for scoring.
 export const CONFETTI = [0xff4d6d, 0xffd23f, 0x3bceac, 0x4d96ff, 0xb15eff, 0xffffff];
+
+// Flat overlays (lines, paths, courts) get pulled toward the camera in the depth test,
+// so they never flicker against the ground underneath. Higher layer wins.
+export function decal(material, layer = 1) {
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -layer;
+  material.polygonOffsetUnits = -layer * 4;
+  return material;
+}

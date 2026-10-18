@@ -52,10 +52,17 @@ export function loadHDRI(name) {
   return hdrCache.get(name);
 }
 
+export function releaseHDRI(name) {
+  const p = hdrCache.get(name);
+  if (!p) return;
+  hdrCache.delete(name);
+  p.then(({ background, env }) => { background.dispose(); env.dispose(); });
+}
+
 export function loadModel(name) {
   if (!gltfCache.has(name)) {
     gltfCache.set(name, gltfLoader.loadAsync(`assets/models/${name}.gltf`).then((g) => {
-      g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.cached = true; } });
       return g.scene;
     }));
   }

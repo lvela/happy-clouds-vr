@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
-import { initAssets, loadHDRI } from './assets.js';
+import { initAssets, loadHDRI, releaseHDRI } from './assets.js';
 import { Audio } from './audio.js';
 import { Physics } from './physics.js';
 import { Particles, makeLabel, clamp } from './util.js';
@@ -15,6 +15,33 @@ const WORLDS = {
   snow: () => import('./worlds/snow.js'),
 };
 const SAVE_KEY = 'happy-clouds-save-v1';
+
+// Files each portal world downloads, fetched in the background once the portal is unlocked.
+const model = (n, extra = []) => [`assets/models/${n}.gltf`, `assets/models/${n}.bin`, ...extra];
+const PREFETCH = {
+  bricks: ['assets/hdri/kloofendal_43d_clear_puresky.hdr'],
+  park: ['assets/hdri/kloppenheim_06_puresky.hdr', ...model('football'), ...model('american_football'), ...model('baseball_01'), ...model('shrub_02'), ...model('boulder_01'), ...model('garden_gnome'), ...model('wooden_picnic_table'), ...model('boombox')],
+  beach: ['assets/hdri/spiaggia_di_mondello.hdr', ...model('rubber_duck_toy'), ...model('lambis_shell'), ...model('treasure_chest'), ...model('lifebuoy'), ...model('wooden_bucket_01')],
+  snow: ['assets/hdri/snowy_park_01.hdr', ...model('wooden_bucket_01')],
+};
+
+function countTriangles(obj) {
+  let n = 0;
+  obj.traverse((o) => { if (o.isMesh && o.geometry) n += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+  return n;
+}
+
+// Free GPU memory for a world being left. Cached model/texture resources are kept for reuse.
+function disposeTree(root) {
+  root.traverse((o) => {
+    if (!(o.isMesh || o.isSprite || o.isPoints || o.isLine) || o.userData.shared || o.userData.cached) return;
+    o.geometry?.dispose();
+    for (const m of [].concat(o.material || [])) {
+      if (m.map?.isCanvasTexture) m.map.dispose();
+      m.dispose();
+    }
+  });
+}
 
 class Game {
   constructor() {
@@ -31,7 +58,8 @@ class Game {
     initAssets(this.renderer);
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 3000);
+    // A tighter near/far range gives the depth buffer more precision (less flicker on distant surfaces).
+    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2000);
     this.rig = new THREE.Group();
     this.rig.add(this.camera);
     this.camera.position.y = 1.6;
@@ -52,7 +80,8 @@ class Game {
     this.clock = new THREE.Clock();
 
     this.player = {
-      feet: this.rig.position, vel: new THREE.Vector3(), vy: 0, grounded: true, speed: 0, yaw: 0, pitch: 0,
+      // `feet` is the simulated position; the camera rig follows it, with step-ups smoothed (see syncRig).
+      feet: new THREE.Vector3(), vel: new THREE.Vector3(), vy: 0, grounded: true, speed: 0, yaw: 0, pitch: 0,
       ride: 'walk', vehicle: null, heading: 0, prevGround: 0,
     };
     this.keys = {};
@@ -122,8 +151,9 @@ class Game {
     this.vrHud.renderOrder = 10;
     this.vrToast = makeLabel(' ', { size: 0.9, font: 56 });
     this.vrToast.material.depthTest = false; this.vrToast.renderOrder = 11;
-    this.vrToast.position.set(0, -0.25, -1.4); this.vrToast.visible = false;
-    this.camera.add(this.vrToast);
+    // Lives in the world and lazily follows your gaze (head-locked text is uncomfortable in VR).
+    this.vrToast.visible = false;
+    this.scene.add(this.vrToast);
     this.vrPrompt = makeLabel(' ', { size: 0.5, font: 52, bg: 'rgba(40,20,50,0.75)', color: '#ffffff' });
     this.vrPrompt.material.depthTest = false; this.vrPrompt.renderOrder = 11; this.vrPrompt.visible = false;
     this.scene.add(this.vrPrompt);
@@ -168,9 +198,19 @@ class Game {
     while (this.dom.toasts.children.length > 3) this.dom.toasts.firstChild.remove();
     setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }, ms);
     this.vrToast.userData.draw([text]);
+    if (this.isVR && !this.vrToast.visible) this.placeToast(true);
     this.vrToast.visible = this.isVR;
     clearTimeout(this._vrToastT);
     this._vrToastT = setTimeout(() => { this.vrToast.visible = false; }, ms);
+  }
+
+  // Ease the toast toward a spot ahead of you and slightly below eye level.
+  placeToast(snap = false, dt = 0) {
+    const head = this.camera.getWorldPosition(new THREE.Vector3());
+    const yaw = this.headYaw();
+    const target = head.add(new THREE.Vector3(-Math.sin(yaw) * 1.6, -0.35, -Math.cos(yaw) * 1.6));
+    if (snap) this.vrToast.position.copy(target);
+    else this.vrToast.position.lerp(target, Math.min(1, dt * 2.5));
   }
 
   // Short-lived floating "+5" text in the world.
@@ -189,6 +229,27 @@ class Game {
     this.fadeSphere.renderOrder = 100;
     this.camera.add(this.fadeSphere);
     this.fadeTarget = 0;
+    // Shown inside the fade while a world loads, so VR players don't just see black.
+    this.vrLoading = makeLabel(['Loading…', ''], { size: 0.16, font: 56, bg: 'rgba(255,246,240,0.95)' });
+    this.vrLoading.material.depthTest = false; this.vrLoading.renderOrder = 101;
+    this.vrLoading.position.set(0, 0, -0.25); this.vrLoading.visible = false;
+    this.camera.add(this.vrLoading);
+    THREE.DefaultLoadingManager.onProgress = (_url, loaded, total) => {
+      if (this.loading) this.vrLoading.userData.draw([this.loadingName || 'Loading…', `${Math.round((loaded / total) * 100)}%`]);
+    };
+
+    // Comfort vignette: darkens your peripheral vision while you move in VR, which reduces motion sickness.
+    this.vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
+      transparent: true, depthTest: false, depthWrite: false,
+      uniforms: { strength: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'varying vec2 vUv; uniform float strength; void main(){ float r = length(vUv - 0.5) * 2.0; float a = smoothstep(0.35, 0.95, r) * strength; gl_FragColor = vec4(0.05, 0.03, 0.08, a); }',
+    }));
+    this.vignette.position.z = -0.2;
+    this.vignette.scale.setScalar(0.5);
+    this.vignette.renderOrder = 99;
+    this.vignette.visible = false;
+    this.camera.add(this.vignette);
   }
   fade(to) {
     this.fadeTarget = to;
@@ -197,7 +258,21 @@ class Game {
   }
 
   // ---------- Interaction registry ----------
-  interact(obj, def) { this.interactables.set(obj, { distance: 6, ...def }); }
+  interact(obj, def) {
+    const d = { distance: 6, ...def };
+    // Detailed scanned models get an invisible box to aim at; ray-testing every triangle each frame is too slow in VR.
+    if (!obj.isInstancedMesh && !d.exact && !d.heightfield && countTriangles(obj) > 1500) {
+      obj.updateWorldMatrix(true, true);
+      const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert();
+      const box = new THREE.Box3();
+      obj.traverse((o) => { if (o.isMesh) { o.geometry.computeBoundingBox(); box.union(o.geometry.boundingBox.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld))); } });
+      const proxy = new THREE.Mesh(new THREE.BoxGeometry(...box.getSize(new THREE.Vector3()).toArray()), new THREE.MeshBasicMaterial({ visible: false }));
+      box.getCenter(proxy.position);
+      obj.add(proxy);
+      d.proxy = proxy;
+    }
+    this.interactables.set(obj, d);
+  }
   uninteract(obj) { this.interactables.delete(obj); }
 
   // Collectible: auto-collected on touch; with magnet, pointing + trigger pulls it to you.
@@ -274,7 +349,7 @@ class Game {
       this.camera.position.set(0, 0, 0); this.camera.rotation.set(0, 0, 0);
       this.dom.hud.classList.add('hidden'); this.dom.cross.classList.add('hidden');
       // Shadows are expensive on standalone headsets.
-      this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null;
+      this.setShadowQuality(1024, 20);
       this.rig.rotation.y = this.player.yaw;
       if (!this.started) this.begin();
     });
@@ -282,7 +357,17 @@ class Game {
       this.camera.position.set(0, 1.6, 0);
       this.dom.hud.classList.remove('hidden'); this.dom.cross.classList.remove('hidden');
       this.player.yaw = this.rig.rotation.y;
+      this.setShadowQuality(2048, 30);
     });
+  }
+
+  // Shadow map resolution and the area it covers around the player (half-width in metres).
+  setShadowQuality(size, half) {
+    const sh = this.sun.shadow, sc = sh.camera;
+    sh.mapSize.set(size, size);
+    sh.map?.dispose(); sh.map = null;
+    sc.left = sc.bottom = -half; sc.right = sc.top = half;
+    sc.updateProjectionMatrix();
   }
 
   pollGamepads(dt) {
@@ -314,7 +399,9 @@ class Game {
     this.rig.rotation.y += angle;
     this.rig.updateMatrixWorld(true);
     const after = this.camera.getWorldPosition(new THREE.Vector3());
-    this.rig.position.x += head.x - after.x; this.rig.position.z += head.z - after.z;
+    const dx = head.x - after.x, dz = head.z - after.z;
+    this.rig.position.x += dx; this.rig.position.z += dz;
+    this.player.feet.x += dx; this.player.feet.z += dz;
   }
 
   // ---------- Actions ----------
@@ -332,9 +419,23 @@ class Game {
   findHover(p) {
     const ray = this.pointerRay(p);
     ray.far = 30;
-    const objs = [...this.interactables.keys()];
-    for (const b of this.physics.bodies) if (b.grabbable && !b.held) objs.push(b.mesh);
-    const hits = ray.intersectObjects(objs, true);
+    // Cheap tests only: proxy boxes for detailed models, spheres for balls, ray-marching for terrain.
+    const deep = [], flat = [], hits = [];
+    for (const [obj, def] of this.interactables) {
+      if (def.heightfield) { const h = this.marchHeightfield(ray.ray, def.heightfield, def.distance, obj); if (h) hits.push(h); }
+      else if (def.proxy) flat.push(def.proxy);
+      else deep.push(obj);
+    }
+    if (deep.length) hits.push(...ray.intersectObjects(deep, true));
+    if (flat.length) hits.push(...ray.intersectObjects(flat, false));
+    const sphere = new THREE.Sphere();
+    for (const b of this.physics.bodies) {
+      if (!b.grabbable || b.held) continue;
+      sphere.set(b.mesh.position, Math.max(b.radius * 1.4, 0.12));
+      const point = ray.ray.intersectSphere(sphere, new THREE.Vector3());
+      if (point) hits.push({ object: b.mesh, point, distance: point.distanceTo(ray.ray.origin) });
+    }
+    hits.sort((a, b) => a.distance - b.distance);
     outer: for (const h of hits) {
       let o = h.object;
       while (o) {
@@ -351,6 +452,23 @@ class Game {
         o = o.parent;
       }
       return null; // nearest object blocks the ray
+    }
+    return null;
+  }
+
+  // Where a ray first dips below a height function (for terrain you can point at).
+  marchHeightfield(ray, heightAt, maxDist, object) {
+    const p = new THREE.Vector3();
+    let prev = 0;
+    for (let d = 0.2; d <= maxDist; d += 0.2) {
+      ray.at(d, p);
+      if (p.y < heightAt(p.x, p.z)) {
+        let lo = prev, hi = d;
+        for (let i = 0; i < 6; i++) { const mid = (lo + hi) / 2; ray.at(mid, p); if (p.y < heightAt(p.x, p.z)) hi = mid; else lo = mid; }
+        ray.at(hi, p);
+        return { object, point: p.clone(), distance: hi, face: { normal: new THREE.Vector3(0, 1, 0) } };
+      }
+      prev = d;
     }
     return null;
   }
@@ -563,6 +681,7 @@ class Game {
       pl.feet.copy(w.spawn.pos); pl.vy = 0; pl.vel.set(0, 0, 0);
       this.toast(w.respawnText || 'Whoops! Back you go');
     }
+    this.syncRig(dt);
 
     // Ride mesh follows your feet.
     const v = pl.vehicle;
@@ -576,6 +695,22 @@ class Game {
       v.mesh.rotation.y = pl.heading;
       if (r.hover) v.mesh.position.y += r.hover * 0.6 + Math.sin(this.time * 3) * 0.03;
       v.mesh.userData.animate?.(dt, pl.speed);
+    }
+  }
+
+  // The camera rig follows the simulated feet. Small step-ups and step-downs are eased over a
+  // fraction of a second instead of snapping, which is much easier on the stomach in VR.
+  syncRig(dt, snap = false) {
+    const pl = this.player, rig = this.rig.position;
+    rig.x = pl.feet.x; rig.z = pl.feet.z;
+    const dy = pl.feet.y - rig.y;
+    if (snap || !pl.grounded || Math.abs(dy) > 1.5) rig.y = pl.feet.y;
+    else rig.y += dy * Math.min(1, dt * 12);
+    if (this.vignette) {
+      const s = this.isVR ? clamp((pl.speed - 1.5) / 6, 0, 1) * 0.75 + (pl.grounded ? 0 : 0.25) : 0;
+      const u = this.vignette.material.uniforms.strength;
+      u.value += (s - u.value) * Math.min(1, dt * 6);
+      this.vignette.visible = u.value > 0.02;
     }
   }
 
@@ -648,14 +783,36 @@ class Game {
   async goTo(name) {
     if (this.loading) return;
     this.loading = true;
+    this.loadingName = name === 'hub' ? '☁️ Happy Clouds' : (PORTALS.find((p) => p.id === name)?.name ?? name);
+    this.vrLoading.userData.draw([this.loadingName, 'Loading…']);
     this.audio.whoosh();
     await this.fade(1);
+    this.vrLoading.visible = true;
+    try {
+      await this.loadWorld(name);
+    } catch (e) {
+      // Never leave the player stuck in the dark: report it and fall back to the hub.
+      console.error(e);
+      this.loading = false;
+      this.vrLoading.visible = false;
+      this.toast('Oops, that world could not load. Back to the clouds!', 4000);
+      if (name !== 'hub') { await this.goTo('hub'); return; }
+    }
+    this.vrLoading.visible = false;
+    await this.fade(0);
+    if (this.world?.welcome) this.toast(this.world.welcome, 4500);
+    this.loading = false;
+    this.prefetchUnlocked();
+  }
+
+  async loadWorld(name) {
     this.dismount();
     for (const p of [...this.held.keys()]) this.held.delete(p);
+    const oldHdri = this.world?.hdri;
     if (this.world) {
       this.world.dispose?.();
       this.world.group.removeFromParent();
-      this.world.group.traverse((o) => { if (o.isMesh && o.geometry && !o.userData.shared) o.geometry.dispose(); });
+      disposeTree(this.world.group);
     }
     this.world = null;
     this.interactables.clear(); this.collectibles.clear(); this.physics.clear();
@@ -668,6 +825,8 @@ class Game {
     this.scene.add(world.group);
     await world.build();
     const env = await loadHDRI(world.hdri);
+    // Free the previous sky's GPU memory (a standalone headset has far less than a desktop).
+    if (oldHdri && oldHdri !== world.hdri) releaseHDRI(oldHdri);
     // Worlds can ask for the sky to be turned so the sun sits in a chosen direction.
     if (world.sunYaw !== undefined) world.backgroundRotation = world.sunYaw - Math.atan2(env.sun.x, env.sun.z);
     this.scene.background = env.background;
@@ -690,14 +849,44 @@ class Game {
     this.worldName = name;
     this.player.feet.copy(world.spawn.pos);
     this.player.vel.set(0, 0, 0); this.player.vy = 0; this.player.prevGround = world.spawn.pos.y;
+    this.player.grounded = true;
     this.player.yaw = world.spawn.yaw ?? 0;
     this.rig.rotation.y = this.player.yaw;
     this.player.pitch = 0;
+    this.syncRig(0, true);
+    this.updateShadowCamera();
+    // Compile every shader now, behind the fade, instead of hitching during the first seconds of play.
+    this.vrLoading.userData.draw([this.loadingName, 'Getting ready…']);
+    try { await this.renderer.compileAsync(this.scene, this.camera); } catch { /* optional */ }
     if (!this.state.visited.includes(name)) { this.state.visited.push(name); this.save(); }
     this.audio.playMusic(name);
-    await this.fade(0);
-    if (world.welcome) this.toast(world.welcome, 4500);
-    this.loading = false;
+  }
+
+  // Warm the browser cache with the downloads for worlds you've unlocked, so portals open quickly.
+  prefetchUnlocked() {
+    this.prefetched ||= new Set();
+    for (const id of this.state.unlocked) {
+      for (const url of PREFETCH[id] || []) {
+        if (this.prefetched.has(url)) continue;
+        this.prefetched.add(url);
+        fetch(url, { priority: 'low' }).catch(() => this.prefetched.delete(url));
+      }
+    }
+  }
+
+  // The shadow camera follows the player, but only in whole shadow-map texels, so shadow edges
+  // stay perfectly still instead of shimmering as you move.
+  updateShadowCamera() {
+    if (!this.sunDir) return;
+    const sc = this.sun.shadow.camera;
+    const texel = (sc.right - sc.left) / this.sun.shadow.mapSize.x;
+    const fwd = this.sunDir;
+    const right = new THREE.Vector3(0, 1, 0).cross(fwd).normalize();
+    const up = new THREE.Vector3().crossVectors(fwd, right);
+    const f = this.player.feet;
+    const x = Math.round(f.dot(right) / texel) * texel, y = Math.round(f.dot(up) / texel) * texel, z = f.dot(fwd);
+    this.sun.target.position.copy(right.multiplyScalar(x)).addScaledVector(up, y).addScaledVector(fwd, z);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(fwd, 80);
   }
 
   async begin() {
@@ -732,12 +921,8 @@ class Game {
     const fm = this.fadeSphere.material;
     fm.opacity += (this.fadeTarget - fm.opacity) * Math.min(1, dt * 8);
     this.fadeSphere.visible = fm.opacity > 0.01;
-    // Shadow camera follows the player.
-    if (this.sunDir) {
-      const f = this.player.feet;
-      this.sun.target.position.set(f.x, f.y, f.z);
-      this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 80);
-    }
+    this.updateShadowCamera();
+    if (this.isVR && this.vrToast.visible) this.placeToast(false, dt);
     this.renderer.render(this.scene, this.camera);
   }
 }
