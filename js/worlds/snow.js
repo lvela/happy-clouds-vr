@@ -46,7 +46,7 @@ export default class Snow {
     const terrain = makeTerrain(400, 200, snowHeight, this.snowMat);
     g.add(terrain);
     this.game.interact(terrain, {
-      label: () => (this.game.isVR ? 'Squeeze grip to make a snowball' : 'Click to make a snowball'), distance: 5,
+      label: () => (this.game.isVR ? 'Squeeze grip to make a snowball' : 'Click to make a snowball'), distance: 5, heightfield: snowHeight,
       onSelect: (_hit, p) => { const b = this.makeSnowball(p); if (b) this.game.grab(p, b); },
     });
 

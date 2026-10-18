@@ -1,7 +1,8 @@
 // Outdoor Play Park: ride bikes, hoverboards, skateboards and skates; play soccer, basketball and more.
 import * as THREE from 'three';
 import { loadModel, fitModel, texturedMaterial } from '../assets.js';
-import { makeTerrain, makeLabel, rand, fbm } from '../util.js';
+import { makeTerrain, makeLabel, rand, fbm, decal } from '../util.js';
+import { makePalm } from '../palm.js';
 import { makeReturnPortal, spawnBonusMallow, animateAll, celebrate } from './common.js';
 
 const SK = { x: -16, z: -6, half: 11 };          // skatepark
@@ -12,11 +13,12 @@ const TARGET = new THREE.Vector3(-14, 1.8, 18);
 const RING_R = [36, 39.5];
 
 function grassHeight(x, z) {
+  // Perfectly flat where the courts, skate park and bike loop sit, so nothing pokes through
+  // them (that flicker is very noticeable in VR). Rolling hills start beyond the bike loop.
   const r = Math.hypot(x, z);
-  let h = (fbm(x * 0.05, z * 0.05, 3) - 0.5) * 0.6;
-  if (r > 42) h += Math.min((r - 42) * 0.15, 3) + (fbm(x * 0.012, z * 0.012, 3) - 0.3) * Math.min((r - 42) * 0.3, 14);
-  if (r > RING_R[0] - 1.5 && r < RING_R[1] + 1.5) h *= 0.2;   // flatter bike path
-  return h;
+  if (r <= 42) return 0;
+  const k = Math.min((r - 42) / 10, 1);
+  return k * (Math.min((r - 42) * 0.15, 3) + (fbm(x * 0.012, z * 0.012, 3) - 0.3) * Math.min((r - 42) * 0.3, 14));
 }
 
 // Skatepark height in its local coordinates.
@@ -67,7 +69,7 @@ export default class Park {
     g.add(makeTerrain(520, 180, grassHeight, grass));
 
     // Skatepark.
-    const concrete = texturedMaterial('asphalt_02', 6, { color: 0xd8d4cc, roughness: 0.8 });
+    const concrete = decal(texturedMaterial('asphalt_02', 6, { color: 0xd8d4cc, roughness: 0.8 }), 1);
     const sk = makeTerrain(SK.half * 2, 110, (x, z) => skateHeight(x - SK.x, z - SK.z) + 0.03, concrete, SK.x, SK.z);
     g.add(sk);
     // Rails on the quarter-pipe decks.
@@ -93,10 +95,10 @@ export default class Park {
       uv.setXY(i, Math.atan2(z, x) * 30, Math.hypot(x, z) * 0.3);
     }
     ringGeo.computeVertexNormals();
-    const ring = new THREE.Mesh(ringGeo, asphalt); ring.receiveShadow = true;
+    const ring = new THREE.Mesh(ringGeo, decal(asphalt, 1)); ring.receiveShadow = true;
     g.add(ring);
     // Dashed center line.
-    const dash = new THREE.MeshBasicMaterial({ color: 0xfff3a0 });
+    const dash = decal(new THREE.MeshBasicMaterial({ color: 0xfff3a0 }), 3);
     for (let i = 0; i < 80; i++) {
       const a = (i / 80) * Math.PI * 2, r = (RING_R[0] + RING_R[1]) / 2;
       const d = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 1.2), dash);
@@ -131,7 +133,7 @@ export default class Park {
   async buildSoccer() {
     const g = this.group;
     const { x, z, hx, hz } = SOCCER;
-    const line = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const line = decal(new THREE.MeshBasicMaterial({ color: 0xffffff }), 3);
     const strip = (w, d, px, pz) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), line); m.rotation.x = -Math.PI / 2; m.position.set(px, grassHeight(px, pz) + 0.05, pz); g.add(m); };
     strip(hx * 2, 0.1, x, z - hz); strip(hx * 2, 0.1, x, z + hz); strip(0.1, hz * 2, x - hx, z); strip(0.1, hz * 2, x + hx, z); strip(0.1, hz * 2, x, z);
     const circle = new THREE.Mesh(new THREE.RingGeometry(1.95, 2.05, 48), line); circle.rotation.x = -Math.PI / 2; circle.position.set(x, grassHeight(x, z) + 0.05, z); g.add(circle);
@@ -165,15 +167,15 @@ export default class Park {
   async buildHoop() {
     const g = this.group;
     const gy = grassHeight(HOOP.x, HOOP.z);
-    const court = new THREE.Mesh(new THREE.PlaneGeometry(10, 9), new THREE.MeshStandardMaterial({ color: 0xd2733c, roughness: 0.7 }));
+    const court = new THREE.Mesh(new THREE.PlaneGeometry(10, 9), decal(new THREE.MeshStandardMaterial({ color: 0xd2733c, roughness: 0.7 }), 2));
     court.rotation.x = -Math.PI / 2; court.position.set(HOOP.x, gy + 0.03, HOOP.z - 3.5); court.receiveShadow = true;
     g.add(court);
-    const key = new THREE.Mesh(new THREE.RingGeometry(2.9, 3.0, 40, 1, 0, Math.PI), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    const key = new THREE.Mesh(new THREE.RingGeometry(2.9, 3.0, 40, 1, 0, Math.PI), decal(new THREE.MeshBasicMaterial({ color: 0xffffff }), 3));
     key.rotation.x = -Math.PI / 2; key.position.set(HOOP.x, gy + 0.05, HOOP.z); g.add(key);
     const metal = new THREE.MeshStandardMaterial({ color: 0x3a6ccf, metalness: 0.5, roughness: 0.4 });
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, HOOP.y + 0.6), metal);
     pole.position.set(HOOP.x, gy + (HOOP.y + 0.6) / 2, HOOP.z + 0.9); pole.castShadow = true; g.add(pole);
-    const board = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 0.05), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.6, roughness: 0.1, thickness: 0.05 }));
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 0.05), new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, roughness: 0.1 }));
     board.position.set(HOOP.x, gy + HOOP.y + 0.4, HOOP.z + 0.45); g.add(board);
     const square = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.45), new THREE.MeshBasicMaterial({ color: 0xff4040, wireframe: true }));
     square.position.set(HOOP.x, gy + HOOP.y + 0.25, HOOP.z + 0.42); square.rotation.y = Math.PI; g.add(square);
@@ -257,14 +259,18 @@ export default class Park {
     const place = async (name, size, x, z, rotY = rand(0, 6.28), axis) => {
       const m = fitModel(await loadModel(name), size, axis);
       m.position.set(x, grassHeight(x, z), z); m.rotation.y = rotY;
+      // Big background props don't need to cast shadows (saves a lot of GPU in VR).
+      if (name === 'shrub_02' || name === 'boulder_01') m.traverse((o) => { o.castShadow = false; });
       g.add(m); return m;
     };
     const jobs = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 8; i++) {
       const a = rand(0, 6.28), r = rand(43, 50);
       jobs.push(place('shrub_02', rand(2, 3.2), Math.cos(a) * r, Math.sin(a) * r));
     }
-    [[-4, -16], [24, 6], [-28, 10], [8, 24], [-30, -20]].forEach(([x, z]) => jobs.push(place('island_tree_02', rand(6, 8), x, z, rand(0, 6.28), 'y')));
+    [[-4, -16], [24, 6], [-28, 10], [8, 24], [-30, -20]].forEach(([x, z], i) => {
+      const palm = makePalm(i); palm.position.set(x, grassHeight(x, z), z); palm.rotation.y = rand(0, 6.28); g.add(palm);
+    });
     [[30, -24], [-24, 28], [6, -40]].forEach(([x, z]) => jobs.push(place('boulder_01', rand(2, 3.5), x, z)));
     jobs.push(place('garden_gnome', 0.6, -3, 4, 0.4));
     jobs.push(place('garden_gnome', 0.6, 5.5, -2, -0.6));

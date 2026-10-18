@@ -2,6 +2,21 @@
 import * as THREE from 'three';
 import { makeLabel, makePortalMaterial, getMarshmallowGeometry, getMarshmallowMaterial, rand } from '../util.js';
 
+// True when the player walks through a portal ring: either their head or their feet is inside the
+// ring's footprint, or they crossed its plane since last frame (fast movers). Works at any height,
+// so it doesn't matter how tall you are or whether you're standing or seated in VR.
+export function touchesPortal(game, grp, state, halfWidth) {
+  let hit = false;
+  const points = [game.camera.getWorldPosition(new THREE.Vector3()), game.player.feet.clone()];
+  points.forEach((pt, i) => {
+    const l = grp.worldToLocal(pt);
+    const prev = state[i];
+    if (Math.abs(l.x) < halfWidth && (Math.abs(l.z) < 0.6 || (prev && Math.sign(prev.z) !== Math.sign(l.z) && Math.abs(prev.z) < 2))) hit = true;
+    state[i] = l;
+  });
+  return hit;
+}
+
 // A portal back to the cloud hub. Call portal.update(t) every frame.
 export function makeReturnPortal(world, pos, yaw = 0) {
   const game = world.game;
@@ -21,13 +36,13 @@ export function makeReturnPortal(world, pos, yaw = 0) {
   world.group.add(grp);
   game.interact(disc, { label: 'Return to Happy Clouds', distance: 12, onSelect: () => game.goTo('hub') });
   let armed = false; // only after you've stepped away from it once
+  const state = [];
   return {
     grp,
     update(t) {
       mat.uniforms.t.value = t;
-      const head = game.camera.getWorldPosition(new THREE.Vector3());
-      const local = grp.worldToLocal(head);
-      const near = Math.abs(local.z) < 0.4 && Math.hypot(local.x, local.y - 2) < 1.4;
+      const near = touchesPortal(game, grp, state, 1.4);
+      const local = grp.worldToLocal(game.player.feet.clone());
       if (!near && Math.hypot(local.x, local.z) > 3) armed = true;
       if (near && armed) game.goTo('hub');
     },

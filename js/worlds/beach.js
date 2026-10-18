@@ -1,8 +1,8 @@
 // Sunny Beach: sandcastles, beach balls, shells, treasure and floating ducks.
 import * as THREE from 'three';
-import { Water } from 'three/addons/objects/Water.js';
 import { loadModel, fitModel, texturedMaterial, loadTexture } from '../assets.js';
-import { makeTerrain, makeLabel, rand, pick, fbm } from '../util.js';
+import { makeTerrain, makeLabel, rand, pick, fbm, decal } from '../util.js';
+import { makePalm } from '../palm.js';
 import { makeReturnPortal, spawnBonusMallow, animateAll, celebrate } from './common.js';
 
 // Sand slopes down into the sea toward -z.
@@ -41,23 +41,29 @@ export default class Beach {
     g.add(sand);
     this.sand = sand;
     this.game.interact(sand, {
-      label: 'Build a sandcastle tower', distance: 7,
-      enabled: () => true,
+      label: 'Build a sandcastle tower', distance: 7, heightfield: sandHeight,
       onSelect: (hit) => this.buildCastle(hit.point),
     });
 
     // Ocean.
-    const normals = loadTexture('waternormals.jpg', 1, false);
-    this.water = new Water(new THREE.PlaneGeometry(2000, 2000), {
-      textureWidth: 512, textureHeight: 512, waterNormals: normals,
-      sunDirection: new THREE.Vector3(0, 1, -1), sunColor: 0xffffff, waterColor: 0x0a6f86, distortionScale: 2.2, fog: true,
-    });
+    // Two layers of scrolling ripples that reflect the sky. (The three.js Water addon renders the
+    // whole scene a second time for reflections, which a standalone headset can't afford.)
+    const ripples = (repeat) => {
+      const t = loadTexture('waternormals.jpg', 1, false).clone();
+      t.repeat.set(repeat, repeat); t.needsUpdate = true;
+      return t;
+    };
+    this.ripplesA = ripples(120); this.ripplesB = ripples(70);
+    this.water = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshPhysicalMaterial({
+      color: 0x0e7f96, roughness: 0.12, metalness: 0, transparent: true, opacity: 0.88,
+      normalMap: this.ripplesA, normalScale: new THREE.Vector2(0.5, 0.5),
+      clearcoat: 1, clearcoatRoughness: 0.05, clearcoatNormalMap: this.ripplesB, clearcoatNormalScale: new THREE.Vector2(0.4, 0.4),
+      envMapIntensity: 1.2,
+    }));
     this.water.rotation.x = -Math.PI / 2;
-    this.water.position.y = 0;
-    this.water.material.uniforms.size.value = 4;
     g.add(this.water);
     // Foamy shoreline.
-    const foam = new THREE.Mesh(new THREE.PlaneGeometry(240, 2.5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false }));
+    const foam = new THREE.Mesh(new THREE.PlaneGeometry(240, 2.5), decal(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false }), 2));
     foam.rotation.x = -Math.PI / 2; foam.position.set(0, 0.03, -3.4);
     g.add(foam); this.foam = foam;
 
@@ -71,19 +77,18 @@ export default class Beach {
     spawnBonusMallow(this, new THREE.Vector3(14, 0.6, -14), { golden: true, respawn: 40000 }); // out on the water
   }
 
-  onSun(dir) { this.water.material.uniforms.sunDirection.value.copy(dir); }
 
   async buildDecor() {
     const g = this.group;
     const at = (x, z) => new THREE.Vector3(x, sandHeight(x, z), z);
     const palmSpots = [[-14, 8], [-18, 14], [12, 10], [18, 6], [22, 16], [-24, 4], [4, 20], [-8, 22], [28, 3], [-30, 12]];
-    await Promise.all(palmSpots.map(async ([x, z]) => {
-      const p = fitModel(await loadModel('island_tree_02'), rand(7, 10), 'y');
-      p.position.copy(at(x, z)); p.rotation.y = rand(0, 6.28);
+    palmSpots.forEach(([x, z], i) => {
+      const p = makePalm(i); p.position.copy(at(x, z)).add(new THREE.Vector3(0, -0.1, 0)); p.rotation.y = rand(0, 6.28);
       g.add(p);
-    }));
-    for (let i = 0; i < 6; i++) {
+    });
+    for (let i = 0; i < 3; i++) {
       const r = fitModel(await loadModel('boulder_01'), rand(1.5, 4));
+      r.traverse((o) => { o.castShadow = false; });
       const x = pick([-1, 1]) * rand(26, 40), z = rand(-10, 4);
       r.position.copy(at(x, z)).add(new THREE.Vector3(0, -0.3, 0)); r.rotation.y = rand(0, 6.28);
       g.add(r);
@@ -111,8 +116,8 @@ export default class Beach {
       pole.position.y = 1.2;
       um.add(top, pole); um.position.copy(at(x, z)); um.rotation.z = rand(-0.1, 0.1);
       g.add(um);
-      const towel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.8), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }));
-      towel.rotation.set(-Math.PI / 2, 0, rand(-0.4, 0.4)); towel.position.copy(at(x + 1.2, z + 0.5)).add(new THREE.Vector3(0, 0.05, 0));
+      const towel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.8, 4, 8), decal(new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }), 2));
+      towel.rotation.set(-Math.PI / 2, 0, rand(-0.4, 0.4)); towel.position.copy(at(x + 1.2, z + 0.5)).add(new THREE.Vector3(0, 0.12, 0));
       g.add(towel);
     });
 
@@ -271,7 +276,8 @@ export default class Beach {
     const game = this.game;
     this.portal.update(t);
     animateAll(this, t);
-    this.water.material.uniforms.time.value += dt * 0.6;
+    this.ripplesA.offset.set(t * 0.012, t * 0.008);
+    this.ripplesB.offset.set(-t * 0.009, t * 0.011);
     this.foam.material.opacity = 0.3 + Math.sin(t * 0.8) * 0.15;
     this.foam.position.z = -3.4 + Math.sin(t * 0.8) * 0.6;
 

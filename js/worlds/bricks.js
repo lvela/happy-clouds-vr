@@ -42,8 +42,7 @@ export default class Bricks {
     this.sunColor = 0xfff3dd;
     this.spawn = { pos: new THREE.Vector3(3, 0, 12), yaw: 0 };
     this.radius = HALF * U - 1;
-    this.step = 1.0; // you can climb one brick at a time
-    this.welcome = '🧱 Welcome to Happy Land! Point at the ground or a brick and pull the trigger / click to build';
+    this.welcome = '🧱 Welcome to Happy Land! Point and pull the trigger / click to build. Jump to climb bricks';
     this.cells = new Map();    // "i,k,j" -> record
     this.colTop = new Map();   // "i,j" -> highest layer + 1
     this.records = { s: [], b: [] };
@@ -55,10 +54,10 @@ export default class Bricks {
 
   async build() {
     const g = this.group;
-    this.plastic = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.28, clearcoat: 0.6, clearcoatRoughness: 0.2 });
+    this.plastic = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0 });
 
     // Baseplate with real studs.
-    const plateMat = new THREE.MeshPhysicalMaterial({ color: 0x3fae49, roughness: 0.35, clearcoat: 0.4 });
+    const plateMat = new THREE.MeshStandardMaterial({ color: 0x3fae49, roughness: 0.4 });
     const plate = new THREE.Mesh(new THREE.BoxGeometry(N * U, 0.3, N * U), plateMat);
     plate.position.y = -0.15; plate.receiveShadow = true;
     g.add(plate);
@@ -72,6 +71,7 @@ export default class Bricks {
       studs.setMatrixAt(n++, m4);
     }
     studs.receiveShadow = true;
+    studs.raycast = () => {}; // aim at the plate underneath instead; testing 3000 studs per frame is slow on a headset
     g.add(studs);
 
     // Endless studded "water" plate beyond the build area.
@@ -104,7 +104,6 @@ export default class Bricks {
     // Interactions: place on the plate or any brick; remove with secondary.
     const place = (hit, p) => this.placeFromHit(hit);
     this.game.interact(plate, { label: () => `Place ${COLORS[this.colorIndex][0]} brick`, distance: 9, onSelect: place });
-    this.game.interact(studs, { label: () => `Place ${COLORS[this.colorIndex][0]} brick`, distance: 9, onSelect: place });
     for (const k of ['s', 'b']) {
       this.game.interact(this.meshes[k], {
         label: () => `Place brick · ${this.game.isVR ? 'B' : 'right click'} removes`, distance: 9, onSelect: place,
@@ -157,8 +156,11 @@ export default class Bricks {
 
   writeMatrix(rec, lift = 0) {
     const m = new THREE.Matrix4().makeTranslation((rec.i + rec.w / 2) * U, rec.k * H + lift, (rec.j + rec.w / 2) * U);
-    this.meshes[rec.type].setMatrixAt(rec.idx, m);
-    this.meshes[rec.type].instanceMatrix.needsUpdate = true;
+    const mesh = this.meshes[rec.type];
+    mesh.setMatrixAt(rec.idx, m);
+    // Upload only this brick, not the whole buffer.
+    mesh.instanceMatrix.addUpdateRange(rec.idx * 16, 16);
+    mesh.instanceMatrix.needsUpdate = true;
   }
 
   removeBrick(rec) {
@@ -301,7 +303,7 @@ export default class Bricks {
     // Decorative rainbow arch (not walkable).
     const rainbow = new THREE.Group();
     [C.red, C.orange, C.yellow, C.green, C.blue, C.purple].forEach((c, i) => {
-      const m = new THREE.Mesh(new THREE.TorusGeometry(9 - i * 0.6, 0.3, 8, 40, Math.PI), new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.3, clearcoat: 0.6 }));
+      const m = new THREE.Mesh(new THREE.TorusGeometry(9 - i * 0.6, 0.3, 8, 40, Math.PI), new THREE.MeshStandardMaterial({ color: c, roughness: 0.3 }));
       rainbow.add(m);
     });
     rainbow.position.set(0, 0, -8);
@@ -317,7 +319,7 @@ export default class Bricks {
   // ---------- Master Builders ----------
   makeBuilder(colors) {
     const g = new THREE.Group();
-    const mat = (c) => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.3, clearcoat: 0.6 });
+    const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.3 });
     const skin = mat(0xffd21f);
     const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.26), mat(colors.legs)); legL.geometry.translate(0, -0.25, 0); legL.position.set(-0.12, 0.55, 0);
     const legR = legL.clone(); legR.position.x = 0.12;
@@ -337,7 +339,7 @@ export default class Bricks {
     f.fillStyle = '#222'; f.beginPath(); f.arc(108, 50, 9, 0, 7); f.arc(148, 50, 9, 0, 7); f.fill();
     f.strokeStyle = '#222'; f.lineWidth = 6; f.beginPath(); f.arc(128, 62, 26, 0.2 * Math.PI, 0.8 * Math.PI); f.stroke();
     const ft = new THREE.CanvasTexture(fc); ft.colorSpace = THREE.SRGBColorSpace; ft.offset.x = 0.25;
-    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.3, 24), [new THREE.MeshPhysicalMaterial({ map: ft, roughness: 0.3, clearcoat: 0.6 }), skin, skin]);
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.3, 24), [new THREE.MeshStandardMaterial({ map: ft, roughness: 0.3 }), skin, skin]);
     head.position.y = 1.32;
     const stud = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 16), skin); stud.position.y = 0.19; head.add(stud);
     // Hair, cap or hard hat.

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { makeCloudGeometry, cloudMaterial, getMarshmallowGeometry, getMarshmallowMaterial, makeLabel, makePortalMaterial, getPuffTexture, rand, pick } from '../util.js';
 import { PORTALS, HAPPINESS_PER_MALLOW } from '../config.js';
+import { touchesPortal } from './common.js';
 
 const ISLAND_R = 22;
 
@@ -421,7 +422,6 @@ export default class Hub {
     }
 
     // Portals.
-    const head = game.camera.getWorldPosition(new THREE.Vector3());
     for (const p of this.portals) {
       p.discMat.uniforms.t.value = t;
       if (p.unlocking !== undefined) { p.unlocking += dt; p.discMat.uniforms.locked.value = Math.max(0, 1 - p.unlocking); }
@@ -430,8 +430,7 @@ export default class Hub {
         gem.position.set(Math.cos(a) * 2.05, 2.2 + Math.sin(a) * 2.05, 0);
         gem.rotation.y = t * 2;
       });
-      const local = p.grp.worldToLocal(head.clone());
-      if (Math.abs(local.z) < 0.45 && Math.hypot(local.x, local.y - 2.2) < 1.6) {
+      if (touchesPortal(game, p.grp, (p.touch ||= []), 1.6)) {
         if (p.unlocked) game.goTo(p.def.id);
         else if (!this.lockToastT || t - this.lockToastT > 3) { this.lockToastT = t; game.toast(`${p.def.icon} Needs ${p.def.cost} happiness. Keep collecting!`); }
       }
