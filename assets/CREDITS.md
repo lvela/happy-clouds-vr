@@ -1,0 +1,28 @@
+# Asset Credits
+
+All assets below are from [Poly Haven](https://polyhaven.com) and released under **CC0 (public domain)**.
+
+- HDRI: [belfast_sunset_puresky](https://polyhaven.com/a/belfast_sunset_puresky)
+- HDRI: [kloofendal_43d_clear_puresky](https://polyhaven.com/a/kloofendal_43d_clear_puresky)
+- HDRI: [spiaggia_di_mondello](https://polyhaven.com/a/spiaggia_di_mondello)
+- HDRI: [snowy_park_01](https://polyhaven.com/a/snowy_park_01)
+- HDRI: [kloppenheim_06_puresky](https://polyhaven.com/a/kloppenheim_06_puresky)
+- Texture: [coast_sand_01](https://polyhaven.com/a/coast_sand_01)
+- Texture: [snow_02](https://polyhaven.com/a/snow_02)
+- Texture: [grass_path_2](https://polyhaven.com/a/grass_path_2)
+- Texture: [asphalt_02](https://polyhaven.com/a/asphalt_02)
+- Model: [island_tree_02](https://polyhaven.com/a/island_tree_02)
+- Model: [lifebuoy](https://polyhaven.com/a/lifebuoy)
+- Model: [rubber_duck_toy](https://polyhaven.com/a/rubber_duck_toy)
+- Model: [football](https://polyhaven.com/a/football)
+- Model: [american_football](https://polyhaven.com/a/american_football)
+- Model: [baseball_01](https://polyhaven.com/a/baseball_01)
+- Model: [shrub_02](https://polyhaven.com/a/shrub_02)
+- Model: [wooden_picnic_table](https://polyhaven.com/a/wooden_picnic_table)
+- Model: [treasure_chest](https://polyhaven.com/a/treasure_chest)
+- Model: [lambis_shell](https://polyhaven.com/a/lambis_shell)
+- Model: [garden_gnome](https://polyhaven.com/a/garden_gnome)
+- Model: [boombox](https://polyhaven.com/a/boombox)
+- Model: [boulder_01](https://polyhaven.com/a/boulder_01)
+- Model: [wooden_bucket_01](https://polyhaven.com/a/wooden_bucket_01)
+- Texture: waternormals.jpg from the [three.js examples](https://github.com/mrdoob/three.js) (MIT)
