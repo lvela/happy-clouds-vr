@@ -150,6 +150,8 @@ export default class Bricks {
     mesh.setColorAt(rec.idx, new THREE.Color(color));
     mesh.instanceColor.needsUpdate = true;
     this.writeMatrix(rec, drop ? 3 : 0);
+    // three.js caches the bounds it uses to aim at instances; reset them so new bricks can be pointed at.
+    mesh.boundingSphere = null; mesh.boundingBox = null;
     if (drop) this.dropping.push({ rec, t: 0 });
     return rec;
   }
@@ -175,6 +177,7 @@ export default class Bricks {
     }
     list.length = mesh.count - 1;
     mesh.count--;
+    mesh.boundingSphere = null; mesh.boundingBox = null;
     this.dropping = this.dropping.filter((d) => d.rec !== rec);
     for (let a = 0; a < rec.w; a++) for (let b = 0; b < rec.w; b++) {
       const ci = rec.i + a, cj = rec.j + b;
@@ -428,7 +431,7 @@ export default class Bricks {
       d.t += dt * 4;
       const k = Math.min(1, d.t);
       this.writeMatrix(d.rec, (1 - k * k) * 3);
-      if (k >= 1) { this.game.audio.tone(1200 + Math.random() * 400, { dur: 0.04, type: 'square', vol: 0.05 }); return false; }
+      if (k >= 1) { this.meshes[d.rec.type].boundingSphere = null; this.game.audio.tone(1200 + Math.random() * 400, { dur: 0.04, type: 'square', vol: 0.05 }); return false; }
       return true;
     });
     // Queued master-builds.
