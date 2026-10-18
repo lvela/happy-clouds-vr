@@ -1,0 +1,50 @@
+:root {
+  --ink: #3b2340;
+  --card: rgba(255, 246, 240, 0.92);
+  --accent: #ff7a8a;
+  --accent2: #ffb36b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #2b1a3a; font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; color: var(--ink); }
+canvas { display: block; }
+.hidden { display: none !important; }
+
+#start {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, #ff9a8b 0%, #ff6a88 35%, #a46ec7 75%, #3b2b6b 100%);
+  padding: 16px; z-index: 20; overflow-y: auto;
+}
+.card { background: var(--card); border-radius: 24px; padding: 28px 32px; max-width: 620px; width: 100%; box-shadow: 0 20px 60px rgba(60, 20, 60, .35); }
+.card h1 { margin: 0; font-size: 44px; letter-spacing: 1px; background: linear-gradient(90deg, #ff6a88, #ff9a5a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.card .sub { margin: 2px 0 14px; font-style: italic; opacity: .75; }
+.worlds { padding-left: 18px; line-height: 1.6; }
+.buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0 8px; align-items: center; }
+button, #vr-slot button {
+  font: inherit; font-size: 18px; font-weight: bold; padding: 12px 22px; border-radius: 999px; border: 0; cursor: pointer;
+  background: linear-gradient(90deg, var(--accent), var(--accent2)); color: white; box-shadow: 0 6px 18px rgba(255, 106, 136, .4);
+}
+button:disabled { opacity: .5; cursor: wait; }
+#vr-slot button { position: static !important; transform: none !important; left: auto !important; bottom: auto !important; width: auto !important; opacity: 1 !important; background: linear-gradient(90deg, #7a6cff, #c06cff) !important; border: 0 !important; border-radius: 999px !important; font: inherit !important; font-size: 18px !important; font-weight: bold !important; padding: 12px 22px !important; }
+button.link { background: none; box-shadow: none; color: var(--ink); opacity: .6; font-size: 14px; padding: 6px 0; text-decoration: underline; }
+#loading { font-size: 14px; opacity: .7; min-height: 1.2em; }
+details { margin-top: 8px; }
+summary { cursor: pointer; font-weight: bold; }
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 14px; line-height: 1.5; margin-top: 8px; }
+.controls h3 { margin: 4px 0; font-size: 15px; }
+@media (max-width: 560px) { .controls { grid-template-columns: 1fr; } .card { padding: 20px; } .card h1 { font-size: 34px; } }
+
+#hud { position: fixed; top: 14px; left: 14px; right: 14px; display: flex; gap: 10px; flex-wrap: wrap; z-index: 5; pointer-events: none; }
+.pill { background: rgba(255, 246, 240, .85); border-radius: 999px; padding: 8px 16px; font-weight: bold; font-size: 18px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+.pill.wide { min-width: 240px; }
+.pill .ico { font-size: 22px; }
+.bar { flex: 1; height: 10px; background: rgba(0,0,0,.12); border-radius: 99px; overflow: hidden; min-width: 80px; }
+#hud-bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .4s; }
+#hud-extra-wrap:has(#hud-extra:empty) { display: none; }
+
+#crosshair { position: fixed; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,.5); z-index: 5; pointer-events: none; }
+#crosshair.active { background: var(--accent); transform: scale(1.4); }
+#prompt { position: fixed; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); background: rgba(40, 20, 50, .7); color: white; padding: 6px 14px; border-radius: 999px; font-size: 15px; z-index: 5; pointer-events: none; white-space: nowrap; }
+#toasts { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 6; pointer-events: none; }
+.toast { background: rgba(255, 246, 240, .95); padding: 10px 20px; border-radius: 999px; font-weight: bold; font-size: 18px; box-shadow: 0 6px 20px rgba(0,0,0,.2); animation: pop .3s ease-out; transition: opacity .5s; }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+#fade { position: fixed; inset: 0; background: #1a0f24; opacity: 0; pointer-events: none; transition: opacity .45s; z-index: 10; }
